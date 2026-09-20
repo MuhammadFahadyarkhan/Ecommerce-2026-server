@@ -2,12 +2,20 @@ import {createTransport} from 'nodemailer'
 
 const sendOtp = async({email,subject,otp}) =>{
     const transport = createTransport({
-        host:"smtp.gmail.com",
+        host: "smtp.gmail.com",
         port: 465,
-        auth:{
-            user:process.env.Gmail,
-            pass:process.env.Password
-        }
+        secure: true, // true for 465, false for 587
+        auth: {
+            user: process.env.Gmail,
+            pass: process.env.Password
+        },
+        tls: {
+            // Do not fail on invalid certificates if any proxy/firewall intercepts
+            rejectUnauthorized: false
+        },
+        connectionTimeout: 10000, // 10 seconds timeout instead of hanging forever
+        greetingTimeout: 10000,
+        socketTimeout: 10000
     })
 
    const html = `<!DOCTYPE html>
@@ -55,7 +63,6 @@ const sendOtp = async({email,subject,otp}) =>{
     </div>
 </body>
 </html>`;
-
 
 await transport.sendMail({
     from: process.env.Gmail,
