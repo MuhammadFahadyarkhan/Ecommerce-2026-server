@@ -1,24 +1,14 @@
-import {createTransport} from 'nodemailer'
+import { Resend } from 'resend';
 
-const sendOtp = async({email,subject,otp}) =>{
-    const transport = createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true, // true for 465, false for 587
-        auth: {
-            user: process.env.Gmail,
-            pass: process.env.Password
-        },
-        tls: {
-            // Do not fail on invalid certificates if any proxy/firewall intercepts
-            rejectUnauthorized: false
-        },
-        connectionTimeout: 10000, // 10 seconds timeout instead of hanging forever
-        greetingTimeout: 10000,
-        socketTimeout: 10000
-    })
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-   const html = `<!DOCTYPE html>
+const sendOtp = async ({ email, subject, otp }) => {
+    try {
+        const { data, error } = await resend.emails.send({
+            from: 'onboarding@resend.dev', // Default testing domain provided by Resend
+            to: [email],
+            subject: subject,
+            html: `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -62,14 +52,19 @@ const sendOtp = async({email,subject,otp}) =>{
         <p class="otp">${otp}</p>
     </div>
 </body>
-</html>`;
+</html>`
+        });
 
-await transport.sendMail({
-    from: process.env.Gmail,
-    to: email,
-    subject,
-    html,
-});
+        if (error) {
+            console.error("Resend API Error:", error);
+            throw new Error(error.message);
+        }
 
+        return data;
+    } catch (err) {
+        console.error("Failed to send OTP email:", err);
+        throw err;
+    }
 };
+
 export default sendOtp;
