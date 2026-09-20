@@ -2,10 +2,10 @@ import express from 'express';
 import dotenv from "dotenv";
 import connectDb from './utils/db.js';
 import cloudinary from 'cloudinary';
-import cartRoutes from './routes/cart.js'
-import addressRoutes from './routes/address.js'
-import orderRoutes from './routes/order.js'
-import cors from 'cors'
+import cartRoutes from './routes/cart.js';
+import addressRoutes from './routes/address.js';
+import orderRoutes from './routes/order.js';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -16,6 +16,9 @@ cloudinary.v2.config({
 });
 
 const app = express();
+
+// Trust proxy for Railway deployment
+app.set("trust proxy", 1);
 
 // Fix CORS configuration for production credentials
 app.use(cors({
@@ -34,8 +37,8 @@ app.use(express.urlencoded({ extended: true }));
 const port = process.env.PORT || 5000;
 
 // importing routes
-import userRoutes from './routes/user.js'
-import productRoutes from './routes/product.js'
+import userRoutes from './routes/user.js';
+import productRoutes from './routes/product.js';
 
 // using routes
 app.use("/api", userRoutes);
