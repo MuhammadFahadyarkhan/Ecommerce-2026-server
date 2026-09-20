@@ -9,22 +9,31 @@ import cors from 'cors'
 
 dotenv.config();
 
-cloudinary.v2.config
-({
-        cloud_name: process.env.CLOUD_NAME, 
-        api_key: process.env.CLOUD_API_KEY, 
-        api_secret: process.env.CLOUD_API_SECRET
-})
-const app = express();
-app.use(cors());
+cloudinary.v2.config({
+    cloud_name: process.env.CLOUD_NAME, 
+    api_key: process.env.CLOUD_API_KEY, 
+    api_secret: process.env.CLOUD_API_SECRET
+});
 
-//middleware
+const app = express();
+
+// Fix CORS configuration for production credentials
+app.use(cors({
+    origin: [
+        "https://ecommerce-2026-client-production.up.railway.app",
+        "http://localhost:5173",
+        "http://localhost:3000"
+    ],
+    credentials: true
+}));
+
+// middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const port = process.env.PORT
+const port = process.env.PORT || 5000;
 
-//importing routes
+// importing routes
 import userRoutes from './routes/user.js'
 import productRoutes from './routes/product.js'
 
@@ -35,7 +44,7 @@ app.use("/api", cartRoutes);
 app.use("/api", addressRoutes);
 app.use("/api", orderRoutes);
 
-app.listen(port,()=>{
-    console.log(`server is running on http://localhost:${port}`);
-    connectDb()
+app.listen(port, () => {
+    console.log(`server is running on port ${port}`);
+    connectDb();
 });
