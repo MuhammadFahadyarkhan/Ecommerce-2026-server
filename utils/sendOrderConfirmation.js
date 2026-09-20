@@ -1,30 +1,27 @@
-import {createTransport} from 'nodemailer'
+import { Resend } from 'resend';
 
-const sendOrderConfirmation = async({email,subject,orderId,
-products,totalAmount
-}) =>{
-    const transport = createTransport({
-        host:"smtp.gmail.com",
-        port: 465,
-        auth:{
-            user:process.env.Gmail,
-            pass:process.env.Password
-        }
-    });
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-  const productsHtml = products
-    .map(
-      (product) => `
+const sendOrderConfirmation = async ({
+    email,
+    subject,
+    orderId,
+    products,
+    totalAmount
+}) => {
+    const productsHtml = products
+        .map(
+            (product) => `
             <tr>
                 <td style="padding: 10px; border: 1px solid #ddd;">${product.name}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${product.quantity}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">₨${product.price}</td>
             </tr>
         `
-    )
-    .join("");
+        )
+        .join("");
 
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -96,15 +93,20 @@ products,totalAmount
     </div>
 </body>
 </html>`;
-    
-    
 
-await transport.sendMail({
-    from: process.env.Gmail,
-    to: email,
-    subject,
-    html,
-});
+    const { data, error } = await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: [email],
+        subject,
+        html,
+    });
 
+    if (error) {
+        console.error("Resend API Error:", error);
+        throw new Error(error.message);
+    }
+
+    return data;
 };
+
 export default sendOrderConfirmation;
