@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const sendOrderConfirmation = async ({
     email,
     subject,
@@ -9,6 +7,9 @@ const sendOrderConfirmation = async ({
     products,
     totalAmount
 }) => {
+    // Initialize inside the function so process.env is fully loaded
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
     const productsHtml = products
         .map(
             (product) => `

@@ -5,6 +5,7 @@ import cloudinary from 'cloudinary';
 import cartRoutes from './routes/cart.js';
 import addressRoutes from './routes/address.js';
 import orderRoutes from './routes/order.js';
+import categoryRoutes from './routes/category.js'; 
 import cors from 'cors';
 
 dotenv.config();
@@ -46,7 +47,7 @@ app.use("/api", productRoutes);
 app.use("/api", cartRoutes);
 app.use("/api", addressRoutes);
 app.use("/api", orderRoutes);
-
+app.use("/api", categoryRoutes);
 app.listen(port, "0.0.0.0", () => {
     console.log(`server is running on port ${port}`);
     connectDb();
