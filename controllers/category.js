@@ -10,7 +10,6 @@ export const getAllCategories = TryCatch(async (req, res) => {
   console.log("-> Categories found in Category collection:", categories);
 
   if (!categories || categories.length === 0) {
-    // Let's check what fields your Product model actually uses
     const sampleProduct = await Product.findOne({});
     console.log("-> Sample product structure check:", sampleProduct);
 
@@ -26,7 +25,7 @@ export const getAllCategories = TryCatch(async (req, res) => {
   res.json({ categories });
 });
 
-// Create a new category with an image
+// Create or Update a category with an image
 export const createCategory = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") 
     return res.status(403).json({ message: "You are not admin" });
@@ -36,11 +35,6 @@ export const createCategory = TryCatch(async (req, res) => {
 
   if (!name || !name.trim()) {
     return res.status(400).json({ message: "Please provide a category name" });
-  }
-
-  const existingCategory = await Category.findOne({ name: name.trim() });
-  if (existingCategory) {
-    return res.status(400).json({ message: "Category already exists" });
   }
 
   let imageData = {};
@@ -53,7 +47,23 @@ export const createCategory = TryCatch(async (req, res) => {
     };
   }
 
-  const category = await Category.create({
+  // Find if the category already exists
+  let category = await Category.findOne({ name: name.trim() });
+
+  if (category) {
+    // If it exists, update its image (and keep name)
+    if (file) {
+      category.image = imageData;
+      await category.save();
+    }
+    return res.status(200).json({
+      message: "Category Image Updated Successfully",
+      category,
+    });
+  }
+
+  // Otherwise, create a new category
+  category = await Category.create({
     name: name.trim(),
     image: imageData,
   });
