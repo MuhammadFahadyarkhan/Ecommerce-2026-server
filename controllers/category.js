@@ -73,3 +73,22 @@ export const createCategory = TryCatch(async (req, res) => {
     category,
   });
 });
+
+// Delete a category document (Products remain completely untouched)
+export const deleteCategory = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") 
+    return res.status(403).json({ message: "You are not admin" });
+
+  const { id } = req.params;
+
+  const category = await Category.findById(id);
+  if (!category) {
+    return res.status(404).json({ message: "Category not found in database" });
+  }
+
+  await category.deleteOne();
+
+  res.status(200).json({
+    message: "Category deleted successfully (Products are safe)",
+  });
+});
