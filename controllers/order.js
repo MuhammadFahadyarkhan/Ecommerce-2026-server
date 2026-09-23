@@ -78,10 +78,10 @@ export const newOrderCod = TryCatch(async (req, res) => {
     });
 });
 
-// Updated Order Handler for 25% Advance with Screenshot Proof (Supports multer .array("files"))
+// Order Handler for 25% Advance with Screenshot Proof
 export const newOrderWithProof = TryCatch(async (req, res) => {
     const { method, phone, address } = req.body;
-    const paymentProofFiles = req.files; // Captured via shared uploadFiles middleware (.array("files"))
+    const paymentProofFiles = req.files;
 
     if (!paymentProofFiles || !paymentProofFiles.length) {
         return res.status(400).json({ message: "Please upload the payment proof image" });
@@ -106,7 +106,6 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         };
     });
 
-    // Extract file URL/path (supports buffer or cloud storage paths depending on how you push to cloudinary in your app)
     const paymentProofUrl = paymentProofFiles[0].path || paymentProofFiles[0].url;
 
     const order = await Order.create({
@@ -133,6 +132,39 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
 
     res.json({
         message: "Order placed successfully! Awaiting admin approval of your payment proof.",
+        order,
+    });
+});
+
+// Update existing order with payment proof (Switch COD to 25% Advance)
+export const updateOrderProof = TryCatch(async (req, res) => {
+    const { id } = req.params;
+    const paymentProofFiles = req.files;
+
+    if (!paymentProofFiles || !paymentProofFiles.length) {
+        return res.status(400).json({ message: "Please upload the payment proof image" });
+    }
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.user.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const paymentProofUrl = paymentProofFiles[0].path || paymentProofFiles[0].url;
+
+    order.paymentProof = paymentProofUrl;
+    order.method = "25% Advance";
+    order.status = "Awaiting Admin Approval";
+
+    await order.save();
+
+    res.json({
+        message: "Payment proof uploaded successfully! Order status updated to Awaiting Admin Approval.",
         order,
     });
 });
