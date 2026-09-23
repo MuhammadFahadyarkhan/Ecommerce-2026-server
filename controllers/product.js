@@ -140,7 +140,7 @@ export const updateProduct = TryCatch(async (req, res) => {
   });
 });
 
-// Update/Add product image
+// Update/Replace product images
 export const updateProductImage = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "You are not admin" });
@@ -151,23 +151,35 @@ export const updateProductImage = TryCatch(async (req, res) => {
     return res.status(404).json({ message: "Product not found" });
   }
 
-  const file = req.files && req.files[0];
-  if (!file) {
-    return res.status(400).json({ message: "Please upload an image" });
+  const files = req.files;
+  if (!files || files.length === 0) {
+    return res.status(400).json({ message: "Please upload images" });
   }
 
-  const fileBuffer = bufferGenerator(file);
-  const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+  // Optional: Clean up old images from Cloudinary storage to save space
+  for (let img of product.images) {
+    if (img.id) {
+      await cloudinary.v2.uploader.destroy(img.id);
+    }
+  }
 
-  product.images.push({
-    id: result.public_id,
-    url: result.secure_url,
-  });
+  let images = [];
+  for (let i = 0; i < files.length; i++) {
+    const fileBuffer = bufferGenerator(files[i]);
+    const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+    images.push({
+      id: result.public_id,
+      url: result.secure_url,
+    });
+  }
+
+  // Overwrite the old images array entirely with the new array
+  product.images = images;
 
   await product.save();
 
   res.status(200).json({
-    message: "Image Added Successfully",
+    message: "Product Images Updated Successfully",
     product,
   });
 });
