@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Existing COD Order Handler
 export const newOrderCod = TryCatch(async (req, res) => {
     const { method, phone, address } = req.body;
 
@@ -19,7 +20,6 @@ export const newOrderCod = TryCatch(async (req, res) => {
         return res.status(400).json({ messege: "Cart is empty" });
     }
 
-    // 🛡️ Filter out deleted products and clean them up automatically
     const validCartItems = [];
     for (const item of cartItems) {
         if (!item.product) {
@@ -34,15 +34,12 @@ export const newOrderCod = TryCatch(async (req, res) => {
     }
 
     let subTotal = 0;
-
     const items = validCartItems.map((i) => {
         const itemSubtotal = i.product.price * i.quantity;
         subTotal += itemSubtotal;
 
         return {
             product: i.product._id,
-            name: i.product.title,
-            price: i.product.price,
             quantity: i.quantity, 
         };
     });
@@ -58,11 +55,9 @@ export const newOrderCod = TryCatch(async (req, res) => {
 
     for (let i of order.items) {
         const product = await Product.findById(i.product);
-
         if (product) {
             product.stock -= i.quantity;
             product.sold += i.quantity;
-
             await product.save();
         }
     }
@@ -83,9 +78,67 @@ export const newOrderCod = TryCatch(async (req, res) => {
     });
 });
 
+// Updated Order Handler for 25% Advance with Screenshot Proof (Supports multer .array("files"))
+export const newOrderWithProof = TryCatch(async (req, res) => {
+    const { method, phone, address } = req.body;
+    const paymentProofFiles = req.files; // Captured via shared uploadFiles middleware (.array("files"))
+
+    if (!paymentProofFiles || !paymentProofFiles.length) {
+        return res.status(400).json({ message: "Please upload the payment proof image" });
+    }
+
+    const cartItems = await Cart.find({ user: req.user._id }).populate({
+        path: "product",
+        select: "title price stock",
+    });
+
+    if (!cartItems || !cartItems.length) {
+        return res.status(400).json({ message: "Cart is empty" });
+    }
+
+    let subTotal = 0;
+    const items = cartItems.map((i) => {
+        const itemSubtotal = i.product.price * i.quantity;
+        subTotal += itemSubtotal;
+        return {
+            product: i.product._id,
+            quantity: i.quantity,
+        };
+    });
+
+    // Extract file URL/path (supports buffer or cloud storage paths depending on how you push to cloudinary in your app)
+    const paymentProofUrl = paymentProofFiles[0].path || paymentProofFiles[0].url;
+
+    const order = await Order.create({
+        items,
+        method: method || "25% Advance",
+        user: req.user._id,
+        phone,
+        address,
+        subTotal,
+        paymentProof: paymentProofUrl,
+        status: "Awaiting Admin Approval",
+    });
+
+    for (let i of order.items) {
+        const product = await Product.findById(i.product);
+        if (product) {
+            product.stock -= i.quantity;
+            product.sold += i.quantity;
+            await product.save();
+        }
+    }
+
+    await Cart.deleteMany({ user: req.user._id });
+
+    res.json({
+        message: "Order placed successfully! Awaiting admin approval of your payment proof.",
+        order,
+    });
+});
+
 export const getAllOrders = TryCatch(async (req, res) => {
     const orders = await Order.find({ user: req.user._id });
-
     res.json({ orders: orders.reverse() });
 });
 
@@ -103,7 +156,6 @@ export const getAllOrdersAdmin = TryCatch(async (req, res) => {
 
 export const getMyOrder = TryCatch(async (req, res) => {
     const order = await Order.findById(req.params.id).populate("items.product").populate("user");
-
     res.json(order);
 });
 

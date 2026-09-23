@@ -16,10 +16,13 @@ const Schema = new mongoose.Schema({
     ],
     method: {
         type: String,
-        required: true,
+        required: true, // e.g., "cod", "advance_25"
     },
     paymentInfo: {
         type: String,
+    },
+    paymentProof: {
+        type: String, // Store the image URL or file path for 25% advance proof
     },
     user: {
         type: mongoose.Schema.Types.ObjectId,
@@ -36,7 +39,7 @@ const Schema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["Pending", "Shipped", "Delivered", "Rejected by Seller", "Rejected by Buyer"],
+        enum: ["Pending", "Awaiting Admin Approval", "Approved", "Shipped", "Delivered", "Rejected by Seller", "Rejected by Buyer"],
         default: "Pending",
     },
     paidAt: {
