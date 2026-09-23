@@ -4,8 +4,23 @@ import { Product } from "../models/Product.js";
 import sendOrderConfirmation from "../utils/sendOrderConfirmation.js";
 import TryCatch from "../utils/TryCatch.js";
 import dotenv from "dotenv";
+import cloudinary from "cloudinary";
 
 dotenv.config();
+
+// Helper function to handle buffer upload to Cloudinary for memoryStorage
+const uploadToCloudinary = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.v2.uploader.upload_stream(
+            { folder: "payment_proofs" },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result.secure_url);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
 
 // Existing COD Order Handler
 export const newOrderCod = TryCatch(async (req, res) => {
@@ -78,10 +93,10 @@ export const newOrderCod = TryCatch(async (req, res) => {
     });
 });
 
-// Order Handler for 25% Advance with Screenshot Proof
+// Order Handler for 25% Advance with Screenshot Proof (Memory Storage)
 export const newOrderWithProof = TryCatch(async (req, res) => {
     const { method, phone, address } = req.body;
-    const paymentProofFiles = req.files;
+    const paymentProofFiles = req.files; 
 
     if (!paymentProofFiles || !paymentProofFiles.length) {
         return res.status(400).json({ message: "Please upload the payment proof image" });
@@ -106,7 +121,8 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         };
     });
 
-    const paymentProofUrl = paymentProofFiles[0].path || paymentProofFiles[0].url;
+    // Upload buffer to Cloudinary and get the secure URL
+    const paymentProofUrl = await uploadToCloudinary(paymentProofFiles[0].buffer);
 
     const order = await Order.create({
         items,
@@ -136,7 +152,7 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
     });
 });
 
-// Update existing order with payment proof (Switch COD to 25% Advance)
+// Update existing order with payment proof (Memory Storage -> Cloudinary)
 export const updateOrderProof = TryCatch(async (req, res) => {
     const { id } = req.params;
     const paymentProofFiles = req.files;
@@ -155,7 +171,8 @@ export const updateOrderProof = TryCatch(async (req, res) => {
         return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const paymentProofUrl = paymentProofFiles[0].path || paymentProofFiles[0].url;
+    // Upload the memory buffer to Cloudinary
+    const paymentProofUrl = await uploadToCloudinary(paymentProofFiles[0].buffer);
 
     order.paymentProof = paymentProofUrl;
     order.method = "25% Advance";
