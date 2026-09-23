@@ -92,3 +92,47 @@ export const deleteCategory = TryCatch(async (req, res) => {
     message: "Category deleted successfully (Products are safe)",
   });
 });
+
+// Update a category name or image
+export const updateCategory = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") 
+    return res.status(403).json({ message: "You are not admin" });
+
+  const { id } = req.params;
+  const { name } = req.body;
+
+  let category = await Category.findById(id);
+  if (!category) {
+    return res.status(404).json({ message: "Category not found in database" });
+  }
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ message: "Please provide a category name" });
+  }
+
+  // Check if another category with the same name already exists
+  const existingCategory = await Category.findOne({ name: name.trim() });
+  if (existingCategory && existingCategory._id.toString() !== id) {
+    return res.status(400).json({ message: "A category with this name already exists" });
+  }
+
+  category.name = name.trim();
+
+  // Handle optional new image upload
+  const file = req.files && req.files[0];
+  if (file) {
+    const fileBuffer = bufferGenerator(file);
+    const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+    category.image = {
+      id: result.public_id,
+      url: result.secure_url,
+    };
+  }
+
+  await category.save();
+
+  res.status(200).json({
+    message: "Category updated successfully",
+    category,
+  });
+});
