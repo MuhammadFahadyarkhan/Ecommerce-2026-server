@@ -1,112 +1,71 @@
-import { Product } from '../models/Product.js';
-import { Cart } from '../models/Cart.js'; // 🛒 Import the Cart model
-import TryCatch from '../utils/TryCatch.js';
+import { Product } from "../models/Product.js";
+import TryCatch from "../utils/TryCatch.js";
 import bufferGenerator from "../utils/bufferGenerator.js";
 import cloudinary from "cloudinary";
 
-export const createProduct = TryCatch(async (req, res) => {
-  // 1. Role Authorization
-  if (req.user.role !== "admin") 
-    return res.status(403).json({
-      message: "You are not admin",
-    });
-  
+// Get all products with dynamic filters, regex safety, and stable sorting pagination
+export const getAllProducts = TryCatch(async (req, res) => {
+  let { search, category, sortByPrice, page } = req.query;
 
-  // 2. Validate File Uploads First
-  const files = req.files;
-  if (!files || files.length === 0) {
-    return res.status(400).json({
-      message: "no files to upload",
-    });
+  let query = {};
+
+  // Only apply search filter if provided and not empty
+  if (search && search.trim() !== "") {
+    query.title = { $regex: search.trim(),$options: "i" };
   }
 
-  // 3. Safely Extract Body (Fallback to empty object prevents destructuring crashes)
-  const { title, description, category, price, stock } = req.body || {};
-
-  // 4. Validate Text Fields
-  if (!title || !description || !category || !price || !stock) {
-    return res.status(400).json({
-      message: "Please enter all fields",
-    });
+  // Only apply category filter if provided, valid, and not "All"
+  if (
+    category &&
+    category !== "undefined" &&
+    category !== "null" &&
+    category.trim() !== "" &&
+    category !== "All"
+  ) {
+    query.category = { $regex: `^${category.trim()}$`, $options: "i" };
   }
 
-  // 5. Upload Images to Cloudinary
-  const imageUploadPromises = files.map(async (file) => {
-    const fileBuffer = bufferGenerator(file);
+  const limit = 8;
+  const numericPage = Number(page) || 1;
+  const skip = (numericPage - 1) * limit;
 
-    const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+  // Stable sorting to prevent pagination shifting / missing items with identical timestamps
+  let sort = {};
+  if (sortByPrice === "lowToHigh") {
+    sort.price = 1;
+    sort._id = 1;
+  } else if (sortByPrice === "highToLow") {
+    sort.price = -1;
+    sort._id = 1;
+  } else {
+    sort.createdAt = -1;
+    sort._id = 1; // Stable secondary sort
+  }
 
-    return {
-      id: result.public_id,
-      url: result.secure_url,
-    };
-  });
+  const products = await Product.find(query).sort(sort).skip(skip).limit(limit);
+  const totalProducts = await Product.countDocuments(query);
+  const totalPages = Math.ceil(totalProducts / limit) || 1;
 
-  const uploadedImage = await Promise.all(imageUploadPromises);
+  // Fetch distinct categories for the frontend filter dropdown
+  const categories = await Product.distinct("category");
 
-  // 6. Save Product to Database
- const product = await Product.create({
-    title: title.trim(),
-    description,
-    category: category.trim(), // <--- Trim whitespace and newlines here
-    price,
-    stock,
-    images: uploadedImage,
-  });
+  // Fetch a list of new products for the Home page display
+  const newProduct = await Product.find({}).sort({ createdAt: -1 }).limit(4);
 
-  res.status(201).json({
-    message: "Product Created",
-    product,
+  res.status(200).json({
+    products,
+    newProduct,
+    totalPages,
+    currentPage: numericPage,
+    categories,
   });
 });
 
-export const getAllProducts = TryCatch(async (req, res) => {
- const { search, category, page, sortByPrice } = req.query;
-
- const filter = {}
-
- if(search){
-    filter.title={
-        $regex: search,$options: "i"
-    };
- }
-
-  if(category){
-    filter.category = {
-      $regex: `^${category.trim()}$`,
-      $options: "i"
-    };
-  }
-
-  const limit = 8
-
-  const skip = (page-1) * limit
-
-  let sortOption = {createdAt: -1}
-
-  if(sortByPrice==="lowToHigh"){
-    sortOption = {price: 1};
-  }else if (sortByPrice ==="highToLow"){
-    sortOption = { price: -1};
-  }
-  const products = await Product.find(filter).sort(sortOption).limit(limit).skip(skip);
-  const categories = await Product.distinct("category")
-  const newProduct = await Product.find().sort({ createdAt: -1 }).limit(4);
-  const countProduct = await Product.countDocuments(filter)
-  const totalPages = Math.ceil(countProduct/limit);
-
-  res.json({products, categories, totalPages, newProduct})
-  });
-
-  export const getSingleProduct = TryCatch(async (req, res) => {
+// Get a single product and related items
+export const getSingleProduct = TryCatch(async (req, res) => {
   const product = await Product.findById(req.params.id);
-
-  // Return a 404 cleanly if the product doesn't exist anymore
   if (!product) {
-    return res.status(404).json({
-      success: false,
-      message: "Product not found",
-    });
+    return res.status(404).json({ message: "Product not found" });
   }
 
   const relatedProduct = await Product.find({
@@ -114,124 +73,117 @@ export const getAllProducts = TryCatch(async (req, res) => {
     _id: { $ne: product._id },
   }).limit(4);
 
-  res.json({ product, relatedProduct });
+  res.status(200).json({
+    product,
+    relatedProduct,
+  });
 });
 
-  export const updateProduct = TryCatch(async(req,res)=>{
-     if (req.user.role !== "admin") 
-    return res.status(403).json({
-      message: "You are not admin",
-    });
-    
-    const { title, description, category, price, stock } = req.body; 
+// Create a new product (Admin only)
+export const createProduct = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "You are not admin" });
+  }
 
-    const updateFields = {}
-  if (title) updateFields.title = title;
-  if (description) updateFields.description = description; 
-  if (stock) updateFields.stock = stock;                     
-  if (price) updateFields.price = price;                     
-  if (category) updateFields.category = category.trim();            
+  const { title, description, price, stock, category } = req.body;
+  const files = req.files;
 
-    const updatedProduct = await Product.findByIdAndUpdate(req.params.id,
-      updateFields, {new: true, runValidators: true}
-    );
-    if(!updatedProduct) return res.status(404).json({
-      message: "Product not found",
-    });
+  if (!title || !description || !price || !stock || !category) {
+    return res.status(400).json({ message: "Please fill all fields" });
+  }
 
-    res.json({
-      message:"Product Updated",
-      updatedProduct,
-    });
-  
-  });
-
-  export const updateProductImage = TryCatch(async(req,res)=>{
-      if (req.user.role !== "admin") 
-    return res.status(403).json({
-      message: "You are not admin",
-    });
-
-    const {id} = req.params
-    const files = req.files
-
-  if (!files || files.length === 0) 
-    return res.status(400).json({
-      message: "no files to upload",
-    });
-
-    const product = await Product.findById(id)
-
-    if(!product) return res.status(404).json({
-      message: "Product not found",
-    });
-   
-    const oldImages = product.images || [];
-
-    for(const img of oldImages){
-      if(img.id){
-        await cloudinary.v2.uploader.destroy(img.id);
-      }
+  let images = [];
+  if (files && files.length > 0) {
+    for (let i = 0; i < files.length; i++) {
+      const fileBuffer = bufferGenerator(files[i]);
+      const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+      images.push({
+        id: result.public_id,
+        url: result.secure_url,
+      });
     }
+  }
 
-      const imageUploadPromises = files.map(async (file) => {
-    const fileBuffer = bufferGenerator(file);
-
-    const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
-
-    return {
-      id: result.public_id,
-      url: result.secure_url,
-    };
+  const product = await Product.create({
+    title,
+    description,
+    price,
+    stock,
+    category,
+    images,
   });
 
-  const uploadedImage = await Promise.all(imageUploadPromises);
+  res.status(201).json({
+    message: "Product Created Successfully",
+    product,
+  });
+});
 
-  product.images = uploadedImage;
+// Update product details
+export const updateProduct = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "You are not admin" });
+  }
 
-  await product.save()
+  const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
 
   res.status(200).json({
-    message:"Image updated",
+    message: "Product Updated Successfully",
     product,
-  })
-  })
+  });
+});
 
-  export const deleteProduct = TryCatch(async (req, res) => {
-  // 1. Role Authorization
-  if (req.user.role !== "admin") 
-    return res.status(403).json({
-      message: "You are not admin",
-    });
+// Update/Add product image
+export const updateProductImage = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "You are not admin" });
+  }
 
-  const { id } = req.params;
-
-  // 2. Find Product
-  const product = await Product.findById(id);
+  const product = await Product.findById(req.params.id);
   if (!product) {
-    return res.status(404).json({
-      message: "Product not found",
-    });
+    return res.status(404).json({ message: "Product not found" });
   }
 
-  // 3. Delete Associated Images from Cloudinary safely
-  if (product.images && product.images.length > 0) {
-    for (const img of product.images) {
-      if (img.id) {
-        try {
-          await cloudinary.v2.uploader.destroy(img.id);
-        } catch (err) {
-          console.error("Error deleting image from cloudinary:", err);
-        }
-      }
-    }
+  const file = req.files && req.files[0];
+  if (!file) {
+    return res.status(400).json({ message: "Please upload an image" });
   }
 
-  // 4. Delete Product from Database
-  await Product.findByIdAndDelete(id);
+  const fileBuffer = bufferGenerator(file);
+  const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
 
-  // 5. 🧹 Automatically wipe out this product from all user carts
-  await Cart.deleteMany({ product: id });
+  product.images.push({
+    id: result.public_id,
+    url: result.secure_url,
+  });
+
+  await product.save();
+
+  res.status(200).json({
+    message: "Image Added Successfully",
+    product,
+  });
+});
+
+// Delete product
+export const deleteProduct = TryCatch(async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "You are not admin" });
+  }
+
+  const product = await Product.findById(req.params.id);
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
+  await product.deleteOne();
 
   res.status(200).json({
     message: "Product Deleted Successfully",
