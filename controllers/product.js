@@ -1,4 +1,5 @@
 import { Product } from "../models/Product.js";
+import { Review } from "../models/Review.js";
 import TryCatch from "../utils/TryCatch.js";
 import bufferGenerator from "../utils/bufferGenerator.js";
 import cloudinary from "cloudinary";
@@ -61,7 +62,7 @@ export const getAllProducts = TryCatch(async (req, res) => {
   });
 });
 
-// Get a single product and related items
+// Get a single product, related items, and dynamic reviews
 export const getSingleProduct = TryCatch(async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) {
@@ -73,9 +74,31 @@ export const getSingleProduct = TryCatch(async (req, res) => {
     _id: { $ne: product._id },
   }).limit(4);
 
+  // Fetch reviews for this product
+  const reviews = await Review.find({ product: product._id }).sort({ createdAt: -1 });
+
+  // Calculate dynamic rating metrics
+  const totalReviews = reviews.length;
+  let averageRating = 0;
+  let recommendPercentage = 0;
+
+  if (totalReviews > 0) {
+    const sumRatings = reviews.reduce((acc, item) => acc + item.ratings.overall, 0);
+    averageRating = Number((sumRatings / totalReviews).toFixed(1));
+
+    const recommendCount = reviews.filter((item) => item.recommend === true).length;
+    recommendPercentage = Math.round((recommendCount / totalReviews) * 100);
+  }
+
   res.status(200).json({
     product,
     relatedProduct,
+    reviews,
+    reviewStats: {
+      totalReviews,
+      averageRating,
+      recommendPercentage,
+    },
   });
 });
 
@@ -156,7 +179,6 @@ export const updateProductImage = TryCatch(async (req, res) => {
     return res.status(400).json({ message: "Please upload images" });
   }
 
-  // Optional: Clean up old images from Cloudinary storage to save space
   for (let img of product.images) {
     if (img.id) {
       await cloudinary.v2.uploader.destroy(img.id);
@@ -173,9 +195,7 @@ export const updateProductImage = TryCatch(async (req, res) => {
     });
   }
 
-  // Overwrite the old images array entirely with the new array
   product.images = images;
-
   await product.save();
 
   res.status(200).json({
@@ -199,5 +219,39 @@ export const deleteProduct = TryCatch(async (req, res) => {
 
   res.status(200).json({
     message: "Product Deleted Successfully",
+  });
+});
+
+// Add product review
+export const addProductReview = TryCatch(async (req, res) => {
+  const { id: productId } = req.params;
+  const { name, email, nickname, location, ratings, recommend, title, comment } = req.body;
+
+  const product = await Product.findById(productId);
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+
+  if (!ratings || !ratings.overall) {
+    return res.status(400).json({ message: "Overall rating is required" });
+  }
+
+  const review = await Review.create({
+    product: productId,
+    user: req.user._id,
+    name,
+    email,
+    nickname,
+    location,
+    ratings,
+    recommend,
+    title,
+    comment,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: "Review submitted successfully!",
+    review,
   });
 });
