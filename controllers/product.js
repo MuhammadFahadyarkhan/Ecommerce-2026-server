@@ -141,13 +141,13 @@ export const getSingleProduct = TryCatch(async (req, res) => {
   });
 });
 
-// Create a new product (Admin only)
+// Create a new product (Admin only) - Added discountPercent support
 export const createProduct = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "You are not admin" });
   }
 
-  const { title, description, price, stock, category } = req.body;
+  const { title, description, price, stock, category, discountPercent } = req.body;
   const files = req.files;
 
   if (!title || !description || !price || !stock || !category) {
@@ -172,6 +172,7 @@ export const createProduct = TryCatch(async (req, res) => {
     price,
     stock,
     category,
+    discountPercent: discountPercent || 0,
     images,
   });
 
@@ -187,14 +188,22 @@ export const updateProduct = TryCatch(async (req, res) => {
     return res.status(403).json({ message: "You are not admin" });
   }
 
-  const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
-  });
+  const { title, description, price, stock, category, discountPercent } = req.body;
+
+  const product = await Product.findById(req.params.id);
 
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
+
+  if (title !== undefined) product.title = title;
+  if (description !== undefined) product.description = description;
+  if (price !== undefined) product.price = price;
+  if (stock !== undefined) product.stock = stock;
+  if (category !== undefined) product.category = category;
+  if (discountPercent !== undefined) product.discountPercent = discountPercent;
+
+  await product.save();
 
   res.status(200).json({
     message: "Product Updated Successfully",
@@ -349,8 +358,10 @@ export const deleteProductReview = TryCatch(async (req, res) => {
   const productId = review.product;
   await review.deleteOne();
 
-  // Recalculate ratings after deletion
+  // Recalculate ratings after deletion and return updated stats
   const product = await Product.findById(productId);
+  let updatedReviewStats = { totalReviews: 0, averageRating: 0 };
+  
   if (product) {
     const allReviews = await Review.find({ product: productId });
     const totalReviews = allReviews.length;
@@ -362,10 +373,13 @@ export const deleteProductReview = TryCatch(async (req, res) => {
       total: totalReviews,
     };
     await product.save();
+
+    updatedReviewStats = { totalReviews, averageRating };
   }
 
   res.status(200).json({
     success: true,
     message: "Review deleted successfully",
+    reviewStats: updatedReviewStats, // Return this so frontend can update immediately
   });
 });

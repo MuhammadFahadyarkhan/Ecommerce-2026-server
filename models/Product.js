@@ -1,46 +1,47 @@
 import mongoose from "mongoose";
 
-
 const productSchema = new mongoose.Schema({
-    title:{
-        type: String,
-        required: true,
-       
-    },
-    description:{
+    title: {
         type: String,
         required: true,
     },
-     stock:{
+    description: {
+        type: String,
+        required: true,
+    },
+    stock: {
         type: Number,
         required: true,
     },
-     price:{
+    price: {
         type: Number,
-        required: true,
+        required: true, // Acts as the original/base price
     },
-    images:[{
+    discountPercent: {
+        type: Number,
+        default: 0, // Percentage off, e.g., 20 for 20% discount
+        min: 0,
+        max: 100,
+    },
+    images: [{
         id: String,
-        url:String,
+        url: String,
     }],
-      sold:{
+    sold: {
         type: Number,
         default: 0,
     },
-      category:{
+    category: {
         type: String,
         required: true,
     },
-
-      createdAt:{
+    createdAt: {
         type: Date,
-        default: Date.now(),
+        default: Date.now,
     },
-
-
 },
 {
- timestamps:true,
+    timestamps: true,
 }
 );
 
