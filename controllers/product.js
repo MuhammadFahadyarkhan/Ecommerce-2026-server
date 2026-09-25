@@ -4,7 +4,7 @@ import TryCatch from "../utils/TryCatch.js";
 import bufferGenerator from "../utils/bufferGenerator.js";
 import cloudinary from "cloudinary";
 
-// Get all products with dynamic filters, regex safety, and stable sorting pagination
+// Get all products with dynamic filters, regex safety, stable sorting pagination, and attached ratings
 export const getAllProducts = TryCatch(async (req, res) => {
   let { search, category, sortByPrice, page } = req.query;
 
@@ -43,15 +43,54 @@ export const getAllProducts = TryCatch(async (req, res) => {
     sort._id = 1; // Stable secondary sort
   }
 
-  const products = await Product.find(query).sort(sort).skip(skip).limit(limit);
+  const productsRaw = await Product.find(query).sort(sort).skip(skip).limit(limit).lean();
+  
+  // Attach review ratings dynamically to each product in the list
+  const products = await Promise.all(
+    productsRaw.map(async (prod) => {
+      const reviews = await Review.find({ product: prod._id });
+      const totalReviews = reviews.length;
+      let averageRating = 0;
+      if (totalReviews > 0) {
+        const sumRatings = reviews.reduce((acc, item) => acc + (item.ratings?.overall || 0), 0);
+        averageRating = Number((sumRatings / totalReviews).toFixed(1));
+      }
+      return {
+        ...prod,
+        ratings: {
+          average: averageRating,
+          total: totalReviews,
+        },
+      };
+    })
+  );
+
   const totalProducts = await Product.countDocuments(query);
   const totalPages = Math.ceil(totalProducts / limit) || 1;
 
   // Fetch distinct categories for the frontend filter dropdown
   const categories = await Product.distinct("category");
 
-  // Fetch a list of new products for the Home page display
-  const newProduct = await Product.find({}).sort({ createdAt: -1 }).limit(4);
+  // Fetch a list of new products for the Home page display with ratings attached
+  const newProductRaw = await Product.find({}).sort({ createdAt: -1 }).limit(4).lean();
+  const newProduct = await Promise.all(
+    newProductRaw.map(async (prod) => {
+      const reviews = await Review.find({ product: prod._id });
+      const totalReviews = reviews.length;
+      let averageRating = 0;
+      if (totalReviews > 0) {
+        const sumRatings = reviews.reduce((acc, item) => acc + (item.ratings?.overall || 0), 0);
+        averageRating = Number((sumRatings / totalReviews).toFixed(1));
+      }
+      return {
+        ...prod,
+        ratings: {
+          average: averageRating,
+          total: totalReviews,
+        },
+      };
+    })
+  );
 
   res.status(200).json({
     products,
@@ -234,7 +273,7 @@ export const deleteProduct = TryCatch(async (req, res) => {
   });
 });
 
-// Add product review
+// Add product review and update product ratings instantly
 export const addProductReview = TryCatch(async (req, res) => {
   const { id: productId } = req.params;
   const { name, email, nickname, location, ratings, recommend, title, comment } = req.body;
@@ -248,7 +287,7 @@ export const addProductReview = TryCatch(async (req, res) => {
     return res.status(400).json({ message: "Overall rating is required" });
   }
 
-  // Optional: prevent duplicate reviews by the same user on the same product
+  // Prevent duplicate reviews by the same user on the same product
   const existingReview = await Review.findOne({
     product: productId,
     user: req.user._id,
@@ -270,6 +309,18 @@ export const addProductReview = TryCatch(async (req, res) => {
     title,
     comment,
   });
+
+  // Automatically recalculate and update product ratings
+  const allReviews = await Review.find({ product: productId });
+  const totalReviews = allReviews.length;
+  const sumRatings = allReviews.reduce((acc, item) => acc + item.ratings.overall, 0);
+  const averageRating = totalReviews > 0 ? Number((sumRatings / totalReviews).toFixed(1)) : 0;
+
+  product.ratings = {
+    average: averageRating,
+    total: totalReviews,
+  };
+  await product.save();
 
   res.status(201).json({
     success: true,
@@ -295,7 +346,23 @@ export const deleteProductReview = TryCatch(async (req, res) => {
     return res.status(403).json({ message: "Unauthorized to delete this review" });
   }
 
+  const productId = review.product;
   await review.deleteOne();
+
+  // Recalculate ratings after deletion
+  const product = await Product.findById(productId);
+  if (product) {
+    const allReviews = await Review.find({ product: productId });
+    const totalReviews = allReviews.length;
+    const sumRatings = allReviews.reduce((acc, item) => acc + item.ratings.overall, 0);
+    const averageRating = totalReviews > 0 ? Number((sumRatings / totalReviews).toFixed(1)) : 0;
+
+    product.ratings = {
+      average: averageRating,
+      total: totalReviews,
+    };
+    await product.save();
+  }
 
   res.status(200).json({
     success: true,
