@@ -204,7 +204,7 @@ export const updateProductImage = TryCatch(async (req, res) => {
   });
 });
 
-// Delete product
+// Delete product (Includes Cloudinary image cleanup & associated review cleanup)
 export const deleteProduct = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "You are not admin" });
@@ -214,6 +214,18 @@ export const deleteProduct = TryCatch(async (req, res) => {
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
+
+  // Delete images from Cloudinary storage
+  if (product.images && product.images.length > 0) {
+    for (let img of product.images) {
+      if (img.id) {
+        await cloudinary.v2.uploader.destroy(img.id);
+      }
+    }
+  }
+
+  // Remove reviews associated with this product
+  await Review.deleteMany({ product: product._id });
 
   await product.deleteOne();
 
@@ -236,6 +248,16 @@ export const addProductReview = TryCatch(async (req, res) => {
     return res.status(400).json({ message: "Overall rating is required" });
   }
 
+  // Optional: prevent duplicate reviews by the same user on the same product
+  const existingReview = await Review.findOne({
+    product: productId,
+    user: req.user._id,
+  });
+
+  if (existingReview) {
+    return res.status(400).json({ message: "You have already reviewed this product" });
+  }
+
   const review = await Review.create({
     product: productId,
     user: req.user._id,
@@ -253,5 +275,30 @@ export const addProductReview = TryCatch(async (req, res) => {
     success: true,
     message: "Review submitted successfully!",
     review,
+  });
+});
+
+// Delete product review (Allows Admin or the Review Author to delete)
+export const deleteProductReview = TryCatch(async (req, res) => {
+  const { reviewId } = req.params;
+
+  const review = await Review.findById(reviewId);
+  if (!review) {
+    return res.status(404).json({ message: "Review not found" });
+  }
+
+  // Check if requester is admin or the owner of the review
+  if (
+    req.user.role !== "admin" &&
+    review.user.toString() !== req.user._id.toString()
+  ) {
+    return res.status(403).json({ message: "Unauthorized to delete this review" });
+  }
+
+  await review.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: "Review deleted successfully",
   });
 });

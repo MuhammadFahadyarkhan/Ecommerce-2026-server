@@ -7,7 +7,8 @@ import {
   updateProduct, 
   updateProductImage, 
   deleteProduct,
-  addProductReview // <--- Import the review controller
+  addProductReview,
+  deleteProductReview 
 } from '../controllers/product.js';
 import uploadFiles from "../middlewares/multer.js";
 
@@ -23,7 +24,8 @@ router.route("/product/:id")
 
 router.post("/product/:id", isAuth, uploadFiles, updateProductImage);
 
-// <--- Add the review submission endpoint
+// Review routes
 router.post("/product/:id/review", isAuth, addProductReview);
+router.delete("/product/:id/review/:reviewId", isAuth, deleteProductReview);
 
 export default router;
