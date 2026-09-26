@@ -4,23 +4,29 @@ import TryCatch from '../utils/TryCatch.js';
 import bufferGenerator from "../utils/bufferGenerator.js";
 import cloudinary from "cloudinary";
 
-// Get all categories as an array of strings
 export const getAllCategories = TryCatch(async (req, res) => {
-  let categoryDocs = await Category.find({});
-  console.log("-> Categories found in Category collection:", categoryDocs);
+  let categories = await Category.find({});
+  
+  // Get all unique categories currently used in products
+  const distinctProductCategories = await Product.distinct("category");
 
-  let categories = [];
-
-  if (!categoryDocs || categoryDocs.length === 0) {
-    const distinctProductCategories = await Product.distinct("category");
-    console.log("-> Distinct categories extracted from Product model:", distinctProductCategories);
-    categories = distinctProductCategories;
-  } else {
-    // Map document objects to clean string names so frontend dropdowns match correctly
-    categories = categoryDocs.map((cat) => cat.name);
+  // Automatically seed missing product categories into the Category collection safely
+  for (const catName of distinctProductCategories) {
+    if (catName && !categories.some(c => c.name && c.name.toLowerCase() === catName.toLowerCase())) {
+      const newCat = await Category.create({ name: catName, image: {} });
+      categories.push(newCat);
+    }
   }
 
-  res.json({ categories });
+  // Ensure every category returned has a guaranteed name field
+  const sanitizedCategories = categories.map(cat => ({
+    _id: cat._id,
+    name: cat.name || "Unnamed Category",
+    image: cat.image
+  }));
+
+  console.log("-> Synchronized categories found:", sanitizedCategories);
+  res.json({ categories: sanitizedCategories });
 });
 
 // Create or Update a category with an image
@@ -49,7 +55,6 @@ export const createCategory = TryCatch(async (req, res) => {
   let category = await Category.findOne({ name: name.trim() });
 
   if (category) {
-    // If it exists, update its image (and keep name)
     if (file) {
       category.image = imageData;
       await category.save();
@@ -79,6 +84,10 @@ export const deleteCategory = TryCatch(async (req, res) => {
 
   const { id } = req.params;
 
+  if (id.startsWith("legacy_")) {
+    return res.status(400).json({ message: "Please recreate this category properly in the admin panel before deleting." });
+  }
+
   const category = await Category.findById(id);
   if (!category) {
     return res.status(404).json({ message: "Category not found in database" });
@@ -99,6 +108,10 @@ export const updateCategory = TryCatch(async (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
 
+  if (id.startsWith("legacy_")) {
+    return res.status(400).json({ message: "Please recreate this category properly in the admin panel to enable editing." });
+  }
+
   let category = await Category.findById(id);
   if (!category) {
     return res.status(404).json({ message: "Category not found in database" });
@@ -108,7 +121,6 @@ export const updateCategory = TryCatch(async (req, res) => {
     return res.status(400).json({ message: "Please provide a category name" });
   }
 
-  // Check if another category with the same name already exists
   const existingCategory = await Category.findOne({ name: name.trim() });
   if (existingCategory && existingCategory._id.toString() !== id) {
     return res.status(400).json({ message: "A category with this name already exists" });
@@ -116,7 +128,6 @@ export const updateCategory = TryCatch(async (req, res) => {
 
   category.name = name.trim();
 
-  // Handle optional new image upload
   const file = req.files && req.files[0];
   if (file) {
     const fileBuffer = bufferGenerator(file);
