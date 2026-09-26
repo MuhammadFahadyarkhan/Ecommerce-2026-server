@@ -4,22 +4,20 @@ import TryCatch from '../utils/TryCatch.js';
 import bufferGenerator from "../utils/bufferGenerator.js";
 import cloudinary from "cloudinary";
 
-// Get all categories with fallback
+// Get all categories as an array of strings
 export const getAllCategories = TryCatch(async (req, res) => {
-  let categories = await Category.find({});
-  console.log("-> Categories found in Category collection:", categories);
+  let categoryDocs = await Category.find({});
+  console.log("-> Categories found in Category collection:", categoryDocs);
 
-  if (!categories || categories.length === 0) {
-    const sampleProduct = await Product.findOne({});
-    console.log("-> Sample product structure check:", sampleProduct);
+  let categories = [];
 
+  if (!categoryDocs || categoryDocs.length === 0) {
     const distinctProductCategories = await Product.distinct("category");
     console.log("-> Distinct categories extracted from Product model:", distinctProductCategories);
-
-    categories = distinctProductCategories.map((cat, index) => ({
-      _id: index.toString(),
-      name: cat,
-    }));
+    categories = distinctProductCategories;
+  } else {
+    // Map document objects to clean string names so frontend dropdowns match correctly
+    categories = categoryDocs.map((cat) => cat.name);
   }
 
   res.json({ categories });
