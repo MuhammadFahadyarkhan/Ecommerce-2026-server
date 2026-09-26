@@ -8,6 +8,9 @@ import cloudinary from "cloudinary";
 
 dotenv.config();
 
+// Helper function to eliminate floating-point precision glitches in currency
+const roundCurrency = (num) => Math.round((Number(num) || 0) * 100) / 100;
+
 // Helper function to handle buffer upload to Cloudinary for memoryStorage
 const uploadToCloudinary = (fileBuffer) => {
     return new Promise((resolve, reject) => {
@@ -26,7 +29,6 @@ const uploadToCloudinary = (fileBuffer) => {
 export const newOrderCod = TryCatch(async (req, res) => {
     const { method, phone, address } = req.body;
 
-    // 🛡️ Added discountPercent and discount to the select fields
     const cartItems = await Cart.find({ user: req.user._id }).populate({
         path: "product",
         select: "title price stock discountPercent discount",
@@ -51,13 +53,12 @@ export const newOrderCod = TryCatch(async (req, res) => {
 
     let subTotal = 0;
     const items = validCartItems.map((i) => {
-        // 🛡️ Dynamically calculate discounted price per item
         const discountPercent = i.product.discountPercent || i.product.discount || 0;
         const discountedPrice = discountPercent > 0 
             ? i.product.price * (1 - discountPercent / 100) 
             : i.product.price;
 
-        const itemSubtotal = discountedPrice * i.quantity;
+        const itemSubtotal = roundCurrency(discountedPrice * i.quantity);
         subTotal += itemSubtotal;
 
         return {
@@ -66,13 +67,15 @@ export const newOrderCod = TryCatch(async (req, res) => {
         };
     });
 
+    subTotal = roundCurrency(subTotal);
+
     const order = await Order.create({
         items,
         method,
         user: req.user._id, 
         phone,
         address,
-        subTotal, // Stores correct discounted subtotal
+        subTotal, 
     });
 
     for (let i of order.items) {
@@ -109,7 +112,6 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         return res.status(400).json({ message: "Please upload the payment proof image" });
     }
 
-    // 🛡️ Added discountPercent and discount to the select fields
     const cartItems = await Cart.find({ user: req.user._id }).populate({
         path: "product",
         select: "title price stock discountPercent discount",
@@ -121,13 +123,12 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
 
     let subTotal = 0;
     const items = cartItems.map((i) => {
-        // 🛡️ Dynamically calculate discounted price per item
         const discountPercent = i.product.discountPercent || i.product.discount || 0;
         const discountedPrice = discountPercent > 0 
             ? i.product.price * (1 - discountPercent / 100) 
             : i.product.price;
 
-        const itemSubtotal = discountedPrice * i.quantity;
+        const itemSubtotal = roundCurrency(discountedPrice * i.quantity);
         subTotal += itemSubtotal;
 
         return {
@@ -135,6 +136,8 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
             quantity: i.quantity,
         };
     });
+
+    subTotal = roundCurrency(subTotal);
 
     // Upload buffer to Cloudinary and get the secure URL
     const paymentProofUrl = await uploadToCloudinary(paymentProofFiles[0].buffer);
@@ -145,7 +148,7 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         user: req.user._id,
         phone,
         address,
-        subTotal, // Stores correct discounted subtotal
+        subTotal, 
         paymentProof: paymentProofUrl,
         status: "Awaiting Admin Approval",
     });
@@ -186,7 +189,6 @@ export const updateOrderProof = TryCatch(async (req, res) => {
         return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // Upload the memory buffer to Cloudinary
     const paymentProofUrl = await uploadToCloudinary(paymentProofFiles[0].buffer);
 
     order.paymentProof = paymentProofUrl;

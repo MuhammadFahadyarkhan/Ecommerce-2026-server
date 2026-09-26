@@ -48,6 +48,8 @@ const Schema = new mongoose.Schema({
     subTotal: {
         type: Number,
         required: true,
+        // 🛡️ Automatically round to 2 decimal places on save/update to prevent floating-point glitches
+        set: (v) => Math.round(v * 100) / 100,
     },
     createdAt: {
         type: Date,
