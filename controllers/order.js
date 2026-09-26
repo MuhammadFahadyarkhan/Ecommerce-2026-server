@@ -26,9 +26,10 @@ const uploadToCloudinary = (fileBuffer) => {
 export const newOrderCod = TryCatch(async (req, res) => {
     const { method, phone, address } = req.body;
 
+    // 🛡️ Added discountPercent and discount to the select fields
     const cartItems = await Cart.find({ user: req.user._id }).populate({
         path: "product",
-        select: "title price stock",
+        select: "title price stock discountPercent discount",
     });
 
     if (!cartItems || !cartItems.length) {
@@ -50,7 +51,13 @@ export const newOrderCod = TryCatch(async (req, res) => {
 
     let subTotal = 0;
     const items = validCartItems.map((i) => {
-        const itemSubtotal = i.product.price * i.quantity;
+        // 🛡️ Dynamically calculate discounted price per item
+        const discountPercent = i.product.discountPercent || i.product.discount || 0;
+        const discountedPrice = discountPercent > 0 
+            ? i.product.price * (1 - discountPercent / 100) 
+            : i.product.price;
+
+        const itemSubtotal = discountedPrice * i.quantity;
         subTotal += itemSubtotal;
 
         return {
@@ -65,7 +72,7 @@ export const newOrderCod = TryCatch(async (req, res) => {
         user: req.user._id, 
         phone,
         address,
-        subTotal,
+        subTotal, // Stores correct discounted subtotal
     });
 
     for (let i of order.items) {
@@ -102,9 +109,10 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         return res.status(400).json({ message: "Please upload the payment proof image" });
     }
 
+    // 🛡️ Added discountPercent and discount to the select fields
     const cartItems = await Cart.find({ user: req.user._id }).populate({
         path: "product",
-        select: "title price stock",
+        select: "title price stock discountPercent discount",
     });
 
     if (!cartItems || !cartItems.length) {
@@ -113,8 +121,15 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
 
     let subTotal = 0;
     const items = cartItems.map((i) => {
-        const itemSubtotal = i.product.price * i.quantity;
+        // 🛡️ Dynamically calculate discounted price per item
+        const discountPercent = i.product.discountPercent || i.product.discount || 0;
+        const discountedPrice = discountPercent > 0 
+            ? i.product.price * (1 - discountPercent / 100) 
+            : i.product.price;
+
+        const itemSubtotal = discountedPrice * i.quantity;
         subTotal += itemSubtotal;
+
         return {
             product: i.product._id,
             quantity: i.quantity,
@@ -130,7 +145,7 @@ export const newOrderWithProof = TryCatch(async (req, res) => {
         user: req.user._id,
         phone,
         address,
-        subTotal,
+        subTotal, // Stores correct discounted subtotal
         paymentProof: paymentProofUrl,
         status: "Awaiting Admin Approval",
     });
