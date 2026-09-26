@@ -172,7 +172,7 @@ export const createProduct = TryCatch(async (req, res) => {
     price,
     stock,
     category,
-    discountPercent: discountPercent || 0,
+    discountPercent: discountPercent !== "" && discountPercent !== undefined ? Number(discountPercent) : 0,
     images,
   });
 
@@ -182,7 +182,7 @@ export const createProduct = TryCatch(async (req, res) => {
   });
 });
 
-// Update product details
+// Update product details (Safely handles empty string conversions for numbers)
 export const updateProduct = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "You are not admin" });
@@ -198,10 +198,14 @@ export const updateProduct = TryCatch(async (req, res) => {
 
   if (title !== undefined) product.title = title;
   if (description !== undefined) product.description = description;
-  if (price !== undefined) product.price = price;
-  if (stock !== undefined) product.stock = stock;
+  if (price !== undefined) product.price = price === "" ? 0 : Number(price);
+  if (stock !== undefined) product.stock = stock === "" ? 0 : Number(stock);
   if (category !== undefined) product.category = category;
-  if (discountPercent !== undefined) product.discountPercent = discountPercent;
+  
+  // Prevent Mongoose CastError if frontend sends empty string for discount
+  if (discountPercent !== undefined) {
+    product.discountPercent = discountPercent === "" ? 0 : Number(discountPercent);
+  }
 
   await product.save();
 
