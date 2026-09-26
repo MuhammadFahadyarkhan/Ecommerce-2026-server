@@ -7,17 +7,6 @@ import cloudinary from "cloudinary";
 export const getAllCategories = TryCatch(async (req, res) => {
   let categories = await Category.find({});
   
-  // Get all unique categories currently used in products
-  const distinctProductCategories = await Product.distinct("category");
-
-  // Automatically seed missing product categories into the Category collection safely
-  for (const catName of distinctProductCategories) {
-    if (catName && !categories.some(c => c.name && c.name.toLowerCase() === catName.toLowerCase())) {
-      const newCat = await Category.create({ name: catName, image: {} });
-      categories.push(newCat);
-    }
-  }
-
   // Ensure every category returned has a guaranteed name field
   const sanitizedCategories = categories.map(cat => ({
     _id: cat._id,
@@ -25,7 +14,7 @@ export const getAllCategories = TryCatch(async (req, res) => {
     image: cat.image
   }));
 
-  console.log("-> Synchronized categories found:", sanitizedCategories);
+  console.log("-> Categories found:", sanitizedCategories);
   res.json({ categories: sanitizedCategories });
 });
 
@@ -51,7 +40,6 @@ export const createCategory = TryCatch(async (req, res) => {
     };
   }
 
-  // Find if the category already exists
   let category = await Category.findOne({ name: name.trim() });
 
   if (category) {
@@ -65,7 +53,6 @@ export const createCategory = TryCatch(async (req, res) => {
     });
   }
 
-  // Otherwise, create a new category
   category = await Category.create({
     name: name.trim(),
     image: imageData,
@@ -77,7 +64,7 @@ export const createCategory = TryCatch(async (req, res) => {
   });
 });
 
-// Delete a category document (Products remain completely untouched)
+// Delete a category document permanently
 export const deleteCategory = TryCatch(async (req, res) => {
   if (req.user.role !== "admin") 
     return res.status(403).json({ message: "You are not admin" });
@@ -96,7 +83,7 @@ export const deleteCategory = TryCatch(async (req, res) => {
   await category.deleteOne();
 
   res.status(200).json({
-    message: "Category deleted successfully (Products are safe)",
+    message: "Category deleted successfully",
   });
 });
 
@@ -131,10 +118,10 @@ export const updateCategory = TryCatch(async (req, res) => {
   const file = req.files && req.files[0];
   if (file) {
     const fileBuffer = bufferGenerator(file);
-    const result = await cloudinary.v2.uploader.upload(fileBuffer.content);
+    const recommendation = await cloudinary.v2.uploader.upload(fileBuffer.content);
     category.image = {
-      id: result.public_id,
-      url: result.secure_url,
+      id: recommendation.public_id,
+      url: recommendation.secure_url,
     };
   }
 
